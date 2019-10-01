@@ -128,6 +128,9 @@ int VectorNode::opcode(int sopc, BasicType bt) {
   case Op_NegD:
     assert(bt == T_DOUBLE, "must be");
     return Op_NegVD;
+  case Op_RoundDoubleMode:
+    assert(bt == T_DOUBLE, "must be");
+    return Op_RoundDoubleModeV;
   case Op_SqrtF:
     assert(bt == T_FLOAT, "must be");
     return Op_SqrtVF;
@@ -222,6 +225,13 @@ bool VectorNode::implemented(int opc, uint vlen, BasicType bt) {
       Matcher::vector_size_supported(bt, vlen)) {
     int vopc = VectorNode::opcode(opc, bt);
     return vopc > 0 && Matcher::match_rule_supported_vector(vopc, vlen);
+  }
+  return false;
+}
+
+bool VectorNode::is_roundopD(Node *n) {
+  if (n->Opcode() == Op_RoundDoubleMode) {
+    return true;
   }
   return false;
 }
@@ -371,6 +381,8 @@ VectorNode* VectorNode::make(int opc, Node* n1, Node* n2, uint vlen, BasicType b
   case Op_AndV: return new AndVNode(n1, n2, vt);
   case Op_OrV:  return new OrVNode (n1, n2, vt);
   case Op_XorV: return new XorVNode(n1, n2, vt);
+
+  case Op_RoundDoubleModeV: return new RoundDoubleModeVNode(n1, n2, vt);
   default:
     fatal("Missed vector creation for '%s'", NodeClassNames[vopc]);
     return NULL;
