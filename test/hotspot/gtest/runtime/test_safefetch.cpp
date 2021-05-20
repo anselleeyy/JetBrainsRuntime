@@ -24,7 +24,7 @@
 
 #include "precompiled.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
-#include "runtime/stubRoutines.inline.hpp"
+#include "runtime/stubRoutines.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "utilities/globalDefinitions.hpp"
@@ -42,13 +42,11 @@ TEST_VM(os, safefetch_can_use) {
 
 TEST_VM(os, safefetch_positive) {
   intptr_t v = pattern;
-  Thread::WXWriteFromExecSetter wx_write;
   intptr_t a = SafeFetchN(&v, 1);
   ASSERT_EQ(v, a);
 }
 
 TEST_VM(os, safefetch_negative) {
-  Thread::WXWriteFromExecSetter wx_write;
   intptr_t a = SafeFetchN(invalid_address, pattern);
   ASSERT_EQ(pattern, a);
   a = SafeFetchN(invalid_address, ~pattern);
