@@ -2618,18 +2618,19 @@ void Parse::do_one_bytecode() {
   case Bytecodes::_i2b:
     // Sign extend
     a = pop();
-    a = Compile::narrow_value(T_BYTE, a, NULL, &_gvn, true);
-    push(a);
+    a = _gvn.transform( new LShiftINode(a,_gvn.intcon(24)) );
+    a = _gvn.transform( new RShiftINode(a,_gvn.intcon(24)) );
+    push( a );
     break;
   case Bytecodes::_i2s:
     a = pop();
-    a = Compile::narrow_value(T_SHORT, a, NULL, &_gvn, true);
-    push(a);
+    a = _gvn.transform( new LShiftINode(a,_gvn.intcon(16)) );
+    a = _gvn.transform( new RShiftINode(a,_gvn.intcon(16)) );
+    push( a );
     break;
   case Bytecodes::_i2c:
     a = pop();
-    a = Compile::narrow_value(T_CHAR, a, NULL, &_gvn, true);
-    push(a);
+    push( _gvn.transform( new AndINode(a,_gvn.intcon(0xFFFF)) ) );
     break;
 
   case Bytecodes::_i2f:

@@ -1995,14 +1995,12 @@ uint LoadNode::match_edge(uint idx) const {
 //  with the value stored truncated to a byte.  If no truncation is
 //  needed, the replacement is done in LoadNode::Identity().
 //
-Node* LoadBNode::Ideal(PhaseGVN* phase, bool can_reshape) {
+Node *LoadBNode::Ideal(PhaseGVN *phase, bool can_reshape) {
   Node* mem = in(MemNode::Memory);
   Node* value = can_see_stored_value(mem,phase);
-  if (value != NULL) {
-    Node* narrow = Compile::narrow_value(T_BYTE, value, _type, phase, false);
-    if (narrow != value) {
-      return narrow;
-    }
+  if( value && !phase->type(value)->higher_equal( _type ) ) {
+    Node *result = phase->transform( new LShiftINode(value, phase->intcon(24)) );
+    return new RShiftINode(result, phase->intcon(24));
   }
   // Identity call will handle the case where truncation is not needed.
   return LoadNode::Ideal(phase, can_reshape);
@@ -2032,12 +2030,8 @@ const Type* LoadBNode::Value(PhaseGVN* phase) const {
 Node* LoadUBNode::Ideal(PhaseGVN* phase, bool can_reshape) {
   Node* mem = in(MemNode::Memory);
   Node* value = can_see_stored_value(mem, phase);
-  if (value != NULL) {
-    Node* narrow = Compile::narrow_value(T_BOOLEAN, value, _type, phase, false);
-    if (narrow != value) {
-      return narrow;
-    }
-  }
+  if (value && !phase->type(value)->higher_equal(_type))
+    return new AndINode(value, phase->intcon(0xFF));
   // Identity call will handle the case where truncation is not needed.
   return LoadNode::Ideal(phase, can_reshape);
 }
@@ -2063,15 +2057,11 @@ const Type* LoadUBNode::Value(PhaseGVN* phase) const {
 //  with the value stored truncated to a char.  If no truncation is
 //  needed, the replacement is done in LoadNode::Identity().
 //
-Node* LoadUSNode::Ideal(PhaseGVN* phase, bool can_reshape) {
+Node *LoadUSNode::Ideal(PhaseGVN *phase, bool can_reshape) {
   Node* mem = in(MemNode::Memory);
   Node* value = can_see_stored_value(mem,phase);
-  if (value != NULL) {
-    Node* narrow = Compile::narrow_value(T_CHAR, value, _type, phase, false);
-    if (narrow != value) {
-      return narrow;
-    }
-  }
+  if( value && !phase->type(value)->higher_equal( _type ) )
+    return new AndINode(value,phase->intcon(0xFFFF));
   // Identity call will handle the case where truncation is not needed.
   return LoadNode::Ideal(phase, can_reshape);
 }
@@ -2097,14 +2087,12 @@ const Type* LoadUSNode::Value(PhaseGVN* phase) const {
 //  with the value stored truncated to a short.  If no truncation is
 //  needed, the replacement is done in LoadNode::Identity().
 //
-Node* LoadSNode::Ideal(PhaseGVN* phase, bool can_reshape) {
+Node *LoadSNode::Ideal(PhaseGVN *phase, bool can_reshape) {
   Node* mem = in(MemNode::Memory);
   Node* value = can_see_stored_value(mem,phase);
-  if (value != NULL) {
-    Node* narrow = Compile::narrow_value(T_SHORT, value, _type, phase, false);
-    if (narrow != value) {
-      return narrow;
-    }
+  if( value && !phase->type(value)->higher_equal( _type ) ) {
+    Node *result = phase->transform( new LShiftINode(value, phase->intcon(16)) );
+    return new RShiftINode(result, phase->intcon(16));
   }
   // Identity call will handle the case where truncation is not needed.
   return LoadNode::Ideal(phase, can_reshape);
