@@ -27,6 +27,7 @@
 #import "ThreadUtilities.h"
 #import "JNIUtilities.h"
 #import "AWTView.h"
+#import "PropertiesUtilities.h"
 
 // GET* macros defined in JavaAccessibilityUtilities.h, so they can be shared.
 static jclass sjc_CAccessibility = NULL;
@@ -54,6 +55,12 @@ static jmethodID sjm_getAccessibleIndexInParent = NULL;
     GET_CACCESSIBILITY_CLASS_RETURN(ret); \
     GET_STATIC_METHOD_RETURN(sjm_getAccessibleIndexInParent, sjc_CAccessibility, "getAccessibleIndexInParent", \
                              "(Ljavax/accessibility/Accessible;Ljava/awt/Component;)I", ret);
+
+static jmethodID sjm_getTableVisibleRowRange = NULL;
+#define GET_TABLEVISIBLEROWRANGE_STATIC_METHOD_RETURN(ret) \
+    GET_CACCESSIBILITY_CLASS_RETURN(ret); \
+    GET_STATIC_METHOD_RETURN(sjm_getTableVisibleRowRange, sjc_CAccessibility, "getTableVisibleRowRange", \
+                             "(Ljavax/accessibility/Accessible;Ljava/awt/Component;)[I", ret);
 
 static jclass sjc_CAccessible = NULL;
 #define GET_CACCESSIBLE_CLASS_RETURN(ret) \
@@ -261,17 +268,20 @@ static void RaiseMustOverrideException(NSString *method)
 }
 
 + (jobject) getCAccessible:(jobject)jaccessible withEnv:(JNIEnv *)env {
+    // jaccessible is a weak ref, check it's still alive (at this moment at least)
+    if ((*env)->IsSameObject(env, jaccessible, NULL)) return NULL;
+
     JNI_COCOA_DURING(env);
     DECLARE_CLASS_RETURN(sjc_Accessible, "javax/accessibility/Accessible", NULL);
     GET_CACCESSIBLE_CLASS_RETURN(NULL);
     DECLARE_STATIC_METHOD_RETURN(sjm_getCAccessible, sjc_CAccessible, "getCAccessible",
                                 "(Ljavax/accessibility/Accessible;)Lsun/lwawt/macosx/CAccessible;", NULL);
     if ((*env)->IsInstanceOf(env, jaccessible, sjc_CAccessible)) {
-        return jaccessible;
+        return (*env)->NewLocalRef(env, jaccessible); // delete in the caller
     } else if ((*env)->IsInstanceOf(env, jaccessible, sjc_Accessible)) {
-        jobject o = (*env)->CallStaticObjectMethod(env, sjc_CAccessible,  sjm_getCAccessible, jaccessible);
+        jobject jCAX = (*env)->CallStaticObjectMethod(env, sjc_CAccessible,  sjm_getCAccessible, jaccessible);
         CHECK_EXCEPTION();
-        return o;
+        return jCAX; // delete in the caller
     }
     JNI_COCOA_HANDLE(env);
     return NULL;
@@ -285,37 +295,78 @@ static void RaiseMustOverrideException(NSString *method)
 + (NSArray *) childrenOfParent:(JavaComponentAccessibility *)parent withEnv:(JNIEnv *)env withChildrenCode:(NSInteger)whichChildren allowIgnored:(BOOL)allowIgnored recursive:(BOOL)recursive
 {
     if ([parent isKindOfClass:[JavaTableAccessibility class]]) {
-        if (whichChildren == JAVA_AX_SELECTED_CHILDREN) {
-            NSArray<NSNumber *> *selectedRowIndexses = [(JavaTableAccessibility *)parent selectedAccessibleRows];
-            NSMutableArray *children = [NSMutableArray arrayWithCapacity:[selectedRowIndexses count]];
-            for (NSNumber *index in selectedRowIndexses) {
-                [children addObject:[[JavaTableRowAccessibility alloc] initWithParent:parent
-                                                                              withEnv:env
-                                                                       withAccessible:NULL
-                                                                            withIndex:index.unsignedIntValue
-                                                                             withView:[parent view]
-                                                                         withJavaRole:JavaAccessibilityIgnore]];
+        NSInteger maxAccessibleTableRowCount = 0;
+        NSString *maxTableAccessibleRowCountProp = [PropertiesUtilities javaSystemPropertyForKey:@"sun.awt.mac.a11y.tableAccessibleRowCountThreshold" withEnv:env];
+        if (maxTableAccessibleRowCountProp != NULL) maxAccessibleTableRowCount = [maxTableAccessibleRowCountProp integerValue];
+        if (whichChildren == JAVA_AX_ALL_CHILDREN &&
+            maxAccessibleTableRowCount > 0 &&
+            [(JavaTableAccessibility *)parent accessibleRowCount] > maxAccessibleTableRowCount)
+        {
+            whichChildren = JAVA_AX_VISIBLE_CHILDREN;
+        }
+        switch (whichChildren) {
+            case JAVA_AX_SELECTED_CHILDREN: {
+                NSArray < NSNumber * > *selectedRowIndeces = [(JavaTableAccessibility *) parent selectedAccessibleRows];
+                NSMutableArray *children = [NSMutableArray arrayWithCapacity:[selectedRowIndeces count]];
+                for (NSNumber *index in selectedRowIndeces) {
+                    JavaTableRowAccessibility *row =
+                            [[JavaTableRowAccessibility alloc] initWithParent:parent
+                                                                      withEnv:env
+                                                               withAccessible:NULL
+                                                                    withIndex:index.unsignedIntValue
+                                                                     withView:[parent view]
+                                                                 withJavaRole:JavaAccessibilityIgnore];
+                    [children addObject:[[row retain] autorelease]];
+                }
+                return children;
             }
-            return [NSArray arrayWithArray:children];
-        } else if (whichChildren == JAVA_AX_ALL_CHILDREN) {
-            int rowCount = [(JavaTableAccessibility *)parent accessibleRowCount];
-            NSMutableArray *children = [NSMutableArray arrayWithCapacity:rowCount];
-            for (int i = 0; i < rowCount; i++) {
-                [children addObject:[[JavaTableRowAccessibility alloc] initWithParent:parent
-                                                                              withEnv:env
-                                                                       withAccessible:NULL
-                                                                            withIndex:i
-                                                                             withView:[parent view]
-                                                                         withJavaRole:JavaAccessibilityIgnore]];
+            case JAVA_AX_ALL_CHILDREN: {
+                int rowCount = [(JavaTableAccessibility *) parent accessibleRowCount];
+                NSMutableArray *children = [NSMutableArray arrayWithCapacity:rowCount];
+                for (int i = 0; i < rowCount; i++) {
+                    JavaTableRowAccessibility *row =
+                            [[JavaTableRowAccessibility alloc] initWithParent:parent
+                                                                      withEnv:env
+                                                               withAccessible:NULL
+                                                                    withIndex:i
+                                                                     withView:[parent view]
+                                                                 withJavaRole:JavaAccessibilityIgnore];
+                    [children addObject:[[row retain] autorelease]];
+                }
+                return children;
             }
-            return [NSArray arrayWithArray:children];
-        } else {
-            return [NSArray arrayWithObject:[[JavaTableRowAccessibility alloc] initWithParent:parent
-                                                                                      withEnv:env
-                                                                               withAccessible:NULL
-                                                                                    withIndex:whichChildren
-                                                                                     withView:[parent view]
-                                                                                 withJavaRole:JavaAccessibilityIgnore]];
+            case JAVA_AX_VISIBLE_CHILDREN: {
+                GET_TABLEVISIBLEROWRANGE_STATIC_METHOD_RETURN(nil);
+                jintArray jIndices = (*env)->CallStaticObjectMethod(
+                        env, sjc_CAccessibility, sjm_getTableVisibleRowRange, parent->fAccessible, parent->fComponent);
+                CHECK_EXCEPTION();
+
+                if (jIndices == NULL) return nil;
+                jint *range = (*env)->GetIntArrayElements(env, jIndices, NULL);
+                int firstRow = range[0];
+                int lastRow = range[1];
+                (*env)->ReleaseIntArrayElements(env, jIndices, range, 0);
+
+                NSMutableArray *children = [NSMutableArray arrayWithCapacity:lastRow - firstRow + 1];
+                for (int i = firstRow; i <= lastRow; i++) {
+                    JavaTableRowAccessibility *row =
+                            [[JavaTableRowAccessibility alloc] initWithParent:parent
+                                                                      withEnv:env
+                                                               withAccessible:NULL
+                                                                    withIndex:i
+                                                                     withView:[parent view]
+                                                                 withJavaRole:JavaAccessibilityIgnore];
+                    [children addObject:[[row retain] autorelease]];
+                }
+                return children;
+            }
+            default:
+                return [NSArray arrayWithObject:[[JavaTableRowAccessibility alloc] initWithParent:parent
+                                                                                          withEnv:env
+                                                                                   withAccessible:NULL
+                                                                                        withIndex:whichChildren
+                                                                                         withView:[parent view]
+                                                                                     withJavaRole:JavaAccessibilityIgnore]];
         }
     }
     if (parent->fAccessible == NULL) return nil;
@@ -419,11 +470,11 @@ static void RaiseMustOverrideException(NSString *method)
     jobject jCAX = [JavaComponentAccessibility getCAccessible:jaccessible withEnv:env];
     if (jCAX == NULL) return nil;
     if (!wrapped) { // If wrapped is true, then you don't need to get an existing instance, you need to create a new one
-    JavaComponentAccessibility *value = (JavaComponentAccessibility *) jlong_to_ptr((*env)->GetLongField(env, jCAX, jf_ptr));
-    if (value != nil) {
-        (*env)->DeleteLocalRef(env, jCAX);
-        return [[value retain] autorelease];
-    }
+        JavaComponentAccessibility *value = (JavaComponentAccessibility *) jlong_to_ptr((*env)->GetLongField(env, jCAX, jf_ptr));
+        if (value != nil) {
+            (*env)->DeleteLocalRef(env, jCAX);
+            return [[value retain] autorelease];
+        }
     }
 
     // otherwise, create a new instance
@@ -470,10 +521,7 @@ static void RaiseMustOverrideException(NSString *method)
     [newChild retain];
     (*env)->SetLongField(env, jCAX, jf_ptr, ptr_to_jlong(newChild));
 
-    // the link is removed in the wrapper
-    if (!wrapped) {
-        (*env)->DeleteLocalRef(env, jCAX);
-    }
+    (*env)->DeleteLocalRef(env, jCAX);
 
     // return autoreleased instance
     return [newChild autorelease];

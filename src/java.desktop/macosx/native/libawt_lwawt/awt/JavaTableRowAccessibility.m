@@ -8,16 +8,16 @@
 #import "JavaCellAccessibility.h"
 #import "ThreadUtilities.h"
 #import "JNIUtilities.h"
+#import "AWTView.h"
 
 // GET* macros defined in JavaAccessibilityUtilities.h, so they can be shared.
 static jclass sjc_CAccessibility = NULL;
 
-static jmethodID jm_getChildrenAndRoles = NULL;
-#define GET_CHILDRENANDROLES_METHOD_RETURN(ret) \
+static jmethodID jm_getTableRowChildrenAndRoles = NULL;
+#define GET_TABLEROWCHILDRENANDROLES_METHOD_RETURN(ret) \
     GET_CACCESSIBILITY_CLASS_RETURN(ret); \
-    GET_STATIC_METHOD_RETURN(jm_getChildrenAndRoles, sjc_CAccessibility, "getChildrenAndRoles",\
-                      "(Ljavax/accessibility/Accessible;Ljava/awt/Component;IZ)[Ljava/lang/Object;", ret);
-
+    GET_STATIC_METHOD_RETURN(jm_getTableRowChildrenAndRoles, sjc_CAccessibility, "getTableRowChildrenAndRoles",\
+                      "(Ljavax/accessibility/Accessible;Ljava/awt/Component;IZI)[Ljava/lang/Object;", ret);
 
 @implementation JavaTableRowAccessibility
 
@@ -37,20 +37,20 @@ static jmethodID jm_getChildrenAndRoles = NULL;
         JNIEnv *env = [ThreadUtilities getJNIEnv];
         JavaComponentAccessibility *parent = [self accessibilityParent];
         if (parent->fAccessible == NULL) return nil;
-        GET_CHILDRENANDROLES_METHOD_RETURN(nil);
-        jobjectArray jchildrenAndRoles = (jobjectArray)(*env)->CallStaticObjectMethod(env, sjc_CAccessibility, jm_getChildrenAndRoles, parent->fAccessible, parent->fComponent, JAVA_AX_ALL_CHILDREN, NO);
-        CHECK_EXCEPTION();
+
+        GET_TABLEROWCHILDRENANDROLES_METHOD_RETURN(nil);
+        jobjectArray jchildrenAndRoles = (jobjectArray)(*env)->CallStaticObjectMethod(
+            env, sjc_CAccessibility, jm_getTableRowChildrenAndRoles, parent->fAccessible, parent->fComponent, JAVA_AX_ALL_CHILDREN, NO, [self rowNumberInTable]);
         if (jchildrenAndRoles == NULL) return nil;
 
-        jsize arrayLen = (*env)->GetArrayLength(env, jchildrenAndRoles);
-        NSMutableArray *childrenCells = [NSMutableArray arrayWithCapacity:arrayLen/2];
+        int arrLength = (*env)->GetArrayLength(env, jchildrenAndRoles);
+        int childIndex = [self rowNumberInTable] * [(JavaTableAccessibility *)parent accessibleColCount];
+        NSMutableArray *childrenCells = [NSMutableArray arrayWithCapacity:arrLength / 2];
 
-        NSUInteger childIndex = [self rowNumberInTable] * [(JavaTableAccessibility *)parent accessibleColCount];
-        NSInteger n = ([self rowNumberInTable] + 1) * [(JavaTableAccessibility *)parent accessibleColCount] * 2;
-        for (NSInteger i = childIndex * 2; i < n; i+=2)
+        for (NSInteger i = 0; i < arrLength; i += 2)
         {
             jobject /* Accessible */ jchild = (*env)->GetObjectArrayElement(env, jchildrenAndRoles, i);
-            jobject /* String */ jchildJavaRole = (*env)->GetObjectArrayElement(env, jchildrenAndRoles, i+1);
+            jobject /* String */ jchildJavaRole = (*env)->GetObjectArrayElement(env, jchildrenAndRoles, i + 1);
 
             NSString *childJavaRole = nil;
             if (jchildJavaRole != NULL) {
