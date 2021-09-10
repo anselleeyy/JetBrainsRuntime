@@ -35,11 +35,13 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 
+import java.security.AccessController;
 import java.util.*;
 import sun.awt.X11.XToolkit;
 import sun.java2d.SunGraphicsEnvironment;
 import sun.java2d.SurfaceManagerFactory;
 import sun.java2d.UnixSurfaceManagerFactory;
+import sun.security.action.GetPropertyAction;
 import sun.util.logging.PlatformLogger;
 import sun.java2d.xr.XRSurfaceData;
 
@@ -253,6 +255,12 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
             } else {
                 // no more references to this device, remove it
                 it.remove();
+            }
+        }
+
+        if (remoteX11SpeedupEnabled) {
+            for (final X11GraphicsDevice gd : devices.values()) {
+                gd.resetBoundsCache();
             }
         }
     }
@@ -504,4 +512,11 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
     @Override
     public void paletteChanged() {
     }
+
+    /**
+     * Caches the value of the "remote.x11.speedup" property; defaults to {@code true}.
+     * Controls various speedup techniques that may not work in 100% of cases so an easy kill switch is required.
+     */
+    private static final boolean remoteX11SpeedupEnabled = Boolean.parseBoolean(AccessController.doPrivileged(
+            new GetPropertyAction("remote.x11.speedup", "true")));
 }

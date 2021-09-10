@@ -119,6 +119,7 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Hashtable;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -653,9 +654,15 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
                         ((X11GraphicsEnvironment)GraphicsEnvironment.
                          getLocalGraphicsEnvironment()).
                             rebuildDevices();
+                        if (remoteX11SpeedupEnabled) resetScreenInsetsCache();
                     } finally {
                         awtLock();
                     }
+                } else if (remoteX11SpeedupEnabled) {
+                    final XAtom XA_NET_WORKAREA = XAtom.get("_NET_WORKAREA");
+                    final boolean rootWindowWorkareaResized = (ev.get_type() == XConstants.PropertyNotify
+                            && ev.get_xproperty().get_atom() == XA_NET_WORKAREA.getAtom());
+                    if (rootWindowWorkareaResized) resetScreenInsetsCache();
                 }
             });
         } finally {
@@ -1160,8 +1167,7 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
      * When two screens overlap and the first contains a dock(*****), then
      * _NET_WORKAREA may start at point x1,y1 and end at point x2,y2.
      */
-    @Override
-    public Insets getScreenInsets(final GraphicsConfiguration gc) {
+    private Insets getScreenInsetsImpl(final GraphicsConfiguration gc) {
         GraphicsDevice gd = gc.getDevice();
         XNETProtocol np = XWM.getWM().getNETProtocol();
         if (np == null || !(gd instanceof X11GraphicsDevice) || !np.active()) {
@@ -1202,6 +1208,20 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
         finally
         {
             XToolkit.awtUnlock();
+        }
+    }
+
+    private final Hashtable<GraphicsConfiguration, Insets> cachedInsets = new Hashtable<>();
+    private void resetScreenInsetsCache() {
+        cachedInsets.clear();
+    }
+
+    @Override
+    public Insets getScreenInsets(final GraphicsConfiguration gc) {
+        if (remoteX11SpeedupEnabled) {
+            return cachedInsets.computeIfAbsent(gc, this::getScreenInsetsImpl);
+        } else {
+            return getScreenInsetsImpl(gc);
         }
     }
 
@@ -3091,4 +3111,11 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
     public static boolean getSunAwtDisableGrab() {
         return AccessController.doPrivileged(new GetBooleanAction("sun.awt.disablegrab"));
     }
+
+    /**
+     * Caches the value of the "remote.x11.speedup" property; defaults to {@code true}.
+     * Controls various speedup techniques that may not work in 100% of cases so an easy kill switch is required.
+     */
+    private static final boolean remoteX11SpeedupEnabled = Boolean.parseBoolean(AccessController.doPrivileged(
+            new GetPropertyAction("remote.x11.speedup", "true")));
 }
