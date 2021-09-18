@@ -171,7 +171,7 @@ public final class X11GraphicsDevice extends GraphicsDevice
     }
 
     public Rectangle getBounds() {
-        if (remoteX11SpeedupEnabled) {
+        if (X11GraphicsEnvironment.useBoundsCache()) {
             return getBoundsCached();
         }
         else {
@@ -656,13 +656,6 @@ public final class X11GraphicsDevice extends GraphicsDevice
 
     public void invalidate(X11GraphicsDevice device) {
         screen = device.screen;
-        if (remoteX11SpeedupEnabled) resetBoundsCache();
+        if (X11GraphicsEnvironment.useBoundsCache()) resetBoundsCache();
     }
-
-    /**
-     * Caches the value of the "remote.x11.speedup" property; defaults to {@code true}.
-     * Controls various speedup techniques that may not work in 100% of cases so an easy kill switch is required.
-     */
-    private static final boolean remoteX11SpeedupEnabled = Boolean.parseBoolean(AccessController.doPrivileged(
-            new GetPropertyAction("remote.x11.speedup", "true")));
 }

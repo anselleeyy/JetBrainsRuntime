@@ -258,7 +258,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
             }
         }
 
-        if (remoteX11SpeedupEnabled) {
+        if (useBoundsCache()) {
             for (final X11GraphicsDevice gd : devices.values()) {
                 gd.resetBoundsCache();
             }
@@ -513,10 +513,10 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
     public void paletteChanged() {
     }
 
-    /**
-     * Caches the value of the "remote.x11.speedup" property; defaults to {@code true}.
-     * Controls various speedup techniques that may not work in 100% of cases so an easy kill switch is required.
-     */
-    private static final boolean remoteX11SpeedupEnabled = Boolean.parseBoolean(AccessController.doPrivileged(
-            new GetPropertyAction("remote.x11.speedup", "true")));
+    private static final boolean cacheScreenBoundsValue = Boolean.parseBoolean(AccessController.doPrivileged(
+            new GetPropertyAction("x11.cache.screen.bounds", "true")));
+
+    public static boolean useBoundsCache() {
+        return cacheScreenBoundsValue;
+    }
 }
